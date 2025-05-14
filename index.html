@@ -20,7 +20,7 @@
     </style>
 </head>
 <body>
-    <h1 style="text-align: center;">ESP32 Sensor Data Dashboard</h1>
+    <h1 style="text-align: center;">Cerebral Pulsy Data Dashboard</h1>
     
     <div class="chart-container">
         <canvas id="pitchChart"></canvas>
@@ -29,8 +29,15 @@
     <div id="statusDisplay" class="status normal">Current Status: Normal</div>
     
     <script>
-        // Initialize WebSocket connection
-        const socket = io();
+        // Initialize WebSocket connection - EXPLICITLY CONNECT TO FLASK SERVER
+        const socket = io('http://localhost:5000', {
+            transports: ['websocket'], // Force WebSocket
+            reconnectionAttempts: 5    // Better error handling
+        });
+        
+        // Connection status indicators
+        socket.on('connect', () => console.log('Connected to server'));
+        socket.on('disconnect', () => console.log('Disconnected from server'));
         
         // Chart configuration
         const ctx = document.getElementById('pitchChart').getContext('2d');
@@ -67,7 +74,8 @@
         // Handle incoming pitch data
         socket.on('pitch_data', function(data) {
             // Add new data point
-            chart.data.labels.push(new Date().toLocaleTimeString());
+            const now = new Date();
+            chart.data.labels.push(now.toLocaleTimeString());
             chart.data.datasets[0].data.push(data.value);
             
             // Limit number of points
@@ -78,8 +86,6 @@
             
             // Update chart
             chart.update();
-            
-            // Add threshold indicators
             updateThresholds(data.value);
         });
         
@@ -87,21 +93,11 @@
         socket.on('state_data', function(data) {
             const statusDiv = document.getElementById('statusDisplay');
             statusDiv.textContent = `Current Status: ${data.value}`;
-            
-            if (data.value === 'CP Positive') {
-                statusDiv.className = 'status cp';
-            } else {
-                statusDiv.className = 'status normal';
-            }
+            statusDiv.className = data.value === 'CP Positive' ? 'status cp' : 'status normal';
         });
         
         // Add threshold regions to chart
         function updateThresholds(currentValue) {
-            // Remove existing threshold annotations if they exist
-            if (chart.options.plugins && chart.options.plugins.annotation) {
-                delete chart.options.plugins.annotation;
-            }
-            
             chart.options.plugins = {
                 annotation: {
                     annotations: {
@@ -132,9 +128,20 @@
                     }
                 }
             };
-            
             chart.update();
         }
+
+        // Fallback mock data if connection fails
+        setTimeout(() => {
+            if (!socket.connected) {
+                console.warn("Using mock data - no server connection");
+                setInterval(() => {
+                    const mockPitch = (Math.random() * 180 - 90).toFixed(1);
+                    const mockEvent = { value: parseFloat(mockPitch) };
+                    socket.emit('pitch_data', mockEvent);
+                }, 1000);
+            }
+        }, 3000);
     </script>
 </body>
 </html>
