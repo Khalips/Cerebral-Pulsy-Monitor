@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 Sensor Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .chart-container { width: 100%; max-width: 900px; margin: 0 auto 40px; }
+        .status { 
+            padding: 20px; 
+            text-align: center; 
+            font-size: 24px; 
+            margin: 20px auto;
+            max-width: 900px;
+            border-radius: 5px;
+        }
+        .normal { background-color: #d4edda; color: #155724; }
+        .cp { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">ESP32 Sensor Data Dashboard</h1>
+    
+    <div class="chart-container">
+        <canvas id="pitchChart"></canvas>
+    </div>
+    
+    <div id="statusDisplay" class="status normal">Current Status: Normal</div>
+    
+    <script>
+        // Initialize WebSocket connection
+        const socket = io();
+        
+        // Chart configuration
+        const ctx = document.getElementById('pitchChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Pitch Angle (°)',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        suggestedMin: -90,
+                        suggestedMax: 90
+                    }
+                },
+                animation: {
+                    duration: 0
+                }
+            }
+        });
+        
+        // Data storage
+        const maxDataPoints = 50;
+        let timestamps = [];
+        
+        // Handle incoming pitch data
+        socket.on('pitch_data', function(data) {
+            // Add new data point
+            chart.data.labels.push(new Date().toLocaleTimeString());
+            chart.data.datasets[0].data.push(data.value);
+            
+            // Limit number of points
+            if (chart.data.labels.length > maxDataPoints) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+            }
+            
+            // Update chart
+            chart.update();
+            
+            // Add threshold indicators
+            updateThresholds(data.value);
+        });
+        
+        // Handle state changes
+        socket.on('state_data', function(data) {
+            const statusDiv = document.getElementById('statusDisplay');
+            statusDiv.textContent = `Current Status: ${data.value}`;
+            
+            if (data.value === 'CP Positive') {
+                statusDiv.className = 'status cp';
+            } else {
+                statusDiv.className = 'status normal';
+            }
+        });
+        
+        // Add threshold regions to chart
+        function updateThresholds(currentValue) {
+            // Remove existing threshold annotations if they exist
+            if (chart.options.plugins && chart.options.plugins.annotation) {
+                delete chart.options.plugins.annotation;
+            }
+            
+            chart.options.plugins = {
+                annotation: {
+                    annotations: {
+                        cpZone: {
+                            type: 'box',
+                            yMin: -20,
+                            yMax: 10,
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderColor: 'rgba(255, 99, 132, 0.5)',
+                            borderWidth: 1,
+                            label: {
+                                content: 'CP Zone',
+                                enabled: true
+                            }
+                        },
+                        currentLine: {
+                            type: 'line',
+                            yMin: currentValue,
+                            yMax: currentValue,
+                            borderColor: 'rgb(54, 162, 235)',
+                            borderWidth: 2,
+                            label: {
+                                content: `Current: ${currentValue.toFixed(1)}°`,
+                                enabled: true,
+                                position: 'right'
+                            }
+                        }
+                    }
+                }
+            };
+            
+            chart.update();
+        }
+    </script>
+</body>
+</html>
